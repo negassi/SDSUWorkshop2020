@@ -1,0 +1,369 @@
+---
+title: "Web Scraping"
+author: Peter Claussen
+date: 2/11/2020
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 2 Structured Data
+
+## The Problem
+
+I've followed NCAA Wrestling for many years, and lately have taken an interest in talent identification and athlete development.
+
+Consider, for example, the problem of recuiting collegiate wrestlers. Pontential scholarship athletes will commonly be screened from high school teams (in rare cases, international wrestlers may come from club teams); thus, there is consider interest in high school rankings. See, for example,
+
+- [Intermat](https://intermatwrestle.com/rankings/high_school)
+- [The Open Mat](https://news.theopenmat.com/category/high-school-wrestling/high-school-wrestling-rankings)
+- [WIN](https://www.win-magazine.com/category/hs-rankings/)
+
+It might be useful to compare these different ranking services to determine which are best at predicting collegiate success. To the end, I've decided to compare the 2015 high school class with the results from the 2018 NCAA tournament.
+
+##  Manual Solution
+
+- Copied table from [The Open Mat]('https://news.theopenmat.com/high-school-wrestling/high-school-wrestling-rankings/final-2015-clinch-gear-national-high-school-wrestling-individual-rankings/57136') into Excel, edited and saved as [CSV](./openmat2015.csv)
+- Copied data from the 2018 NCAA Tournament from [PDF source](https://i.turner.ncaa.com/sites/default/files/external/gametool/brackets/wrestling_d1_2018.pdf) and from [FloArena](https://arena.flowrestling.org/event/8f1c1320-e1ac-31b5-c401-e7dda525e4b3) and compiled into [CSV](./ncaa2018.csv). These data also include final rankings from the Coaches Poll and [WrestleStat](https://www.wrestlestat.com/season/2018/rankings/starters) and results from various conference tournaments.
+
+
+Can we merge these two tables to determine how top rank 2015 high school wrestlers performed in 2018?
+
+## R solution
+
+Read tables
+```{r}
+ncaa18.dat <- read.csv("./ncaa2018.csv")
+hs2015.dat <- read.csv("./openmat2015.csv")
+```
+
+Remove the non-qualifiers from the NCAA data set.
+```{r}
+ncaa18.dat <- ncaa18.dat[ncaa18.dat$Finish != 'NQ',]
+```
+
+Process wrestler names in the high school set to match the NCAA format.
+
+```{r}
+names <- matrix(unlist(strsplit(as.character(hs2015.dat$Name),split=" ")),ncol=2,byrow=TRUE)
+hs2015.dat$First <- as.factor(names[,1])
+hs2015.dat$Last<- as.factor(names[,2])
+```
+
+To simplify analysis, group ranks into quantiles:
+```{r}
+hs2015.dat$Quartile <- ceiling(hs2015.dat$Rank/max(hs2015.dat$Rank)*4)
+```
+
+Merge the data.
+```{r}
+merged.dat <- merge(hs2015.dat, ncaa18.dat,by=c("Last","First"))
+```
+
+Examine the correspondence between high school rank and NCAA finish.
+
+### What is the relationship between high school rank and NCAA place?
+```{r}
+table(merged.dat$Quartile,merged.dat$Finish)
+plot(Finish ~ Quartile,data= merged.dat)
+```
+
+### How well does high school ranking predict participation in the NCAA tournament?
+
+```{r}
+merged.dat <- merge(hs2015.dat, ncaa18.dat,by=c("Last","First"),all=TRUE)
+merged.dat$Quartile[is.na(merged.dat$Quartile)] <- 5
+merged.dat$Finish[is.na(merged.dat$Finish)] <- 'NQ'
+table(merged.dat$Quartile,merged.dat$Finish)
+plot(Finish ~ Quartile,data= merged.dat)
+```
+
+# Web Scraping solution
+
+The data in `openmat2015.csv` were copied from a table in
+
+https://news.theopenmat.com/high-school-wrestling/high-school-wrestling-rankings/final-2015-clinch-gear-national-high-school-wrestling-individual-rankings/57136
+
+Can we 'scrape' this table directly?
+
+```{r}
+path <- 'https://news.theopenmat.com/high-school-wrestling/high-school-wrestling-rankings/final-2015-clinch-gear-national-high-school-wrestling-individual-rankings/57136'
+```
+
+For this exericse, we'll use `rvest`
+## rvest
+
+> Easily Harvest (Scrape) Web Pages
+
+```{r}
+library(rvest)
+html.file <- read_html(path)
+class(html.file)
+head(html.file)
+```
+`read_html` returns an instance of `xml_document`, which gives us a interface to the internal structure of the HTML document, and some functions to parse the structure, i.e.
+
+```{r,eval=FALSE}
+html_structure(html.file)
+html_form(html.file)
+```
+
+We use `xpath` to extract named elements of the document. The data on this page we are most interested in is contained in an HTML table, so we can extract just the data with.
+
+```{r}
+table.nodes <- html_nodes(html.file, xpath = '//table')
+head(table.nodes)
+```
+
+```{r,eval=FALSE}
+html_structure(table.nodes)
+```
+
+We can further crawl into the table rows and colums
+
+```{r}
+table.headers <- html_nodes(table.nodes,"th")
+head(table.headers)
+html_text(table.headers)
+```
+
+```{r}
+table.rows <- html_nodes(table.nodes,"tr")
+head(table.rows)
+head(html_text(table.rows))
+```
+
+Further, we can process the document and reformat into something that can be read as a data table. For example, we can collapse a row of HTML table cells into a line of CSV text by
+
+```{r}
+row.columns <- html_nodes(table.rows[[3]],"td")
+row.columns
+paste(row.columns,collapse=',')
+paste(html_text(row.columns),collapse=',')
+```
+
+So,
+
+```{r}
+rows <- lapply(table.rows, function(x) {paste(html_text(html_nodes(x,"td")),collapse=',')})
+rows <- unlist(rows)
+rows <- rows[nchar(rows)>10]
+head(rows)
+```
+
+```{r}
+csv <- paste(rows,collapse='\n')
+openmat2015.dat <- read.csv(text=csv,header=FALSE)
+head(openmat2015.dat)
+names(openmat2015.dat) <- html_text(table.headers)
+head(openmat2015.dat)
+```
+
+## Don't reinvent the wheel
+
+We don't need to parse the file manually, if we know there's an HTML table inside:
+```{r}
+openmat2015.dat <- html_table(html.file)[[1]]
+head(openmat2015.dat)
+```
+
+However, sometimes the tables aren't as cleanly parsed as we might like:
+
+```{r}
+path <- 'https://www.wrestlestat.com/nationaltourneyresult/2018/individual/125'
+head(html_table(read_html(path))[[1]])
+```
+
+# HTML Attributes
+
+Not only can we parse HTML nodes, we can also examine attributes. Consider the links to national tournament results at [WrestleStat](https://www.wrestlestat.com/nationaltourneyresult)
+
+```{r}
+path <- 'https://www.wrestlestat.com/nationaltourneyresult'
+html.file <- read_html(path)
+link.nodes <- html_nodes(html.file, xpath = '//a')
+head(link.nodes)
+href.attr <- html_attr(link.nodes,'href')
+head(href.attr)
+```
+
+These are a lot of links, most we will not find of interest. We can look links for th 2018 tournament using regular expressions. Note a simple search for the year will also give us team results.
+
+```{r}
+href.attr[grepl('2018', href.attr)]
+links.2018 <- href.attr[grepl('.*2018.*individual', href.attr)]
+links.2018
+```
+
+# Exercises
+
+# 1
+
+The data table we read directly from The Open Mat has weight classes as headings. Can we process the HTML to create a table with weight class in columns?
+
+# 2
+
+Can these be read into tables compatible with the analysis at the top of this page?
+
+- https://intermatwrestle.com/rankings/high_school
+- https://news.theopenmat.com/high-school-wrestling/high-school-wrestling-rankings/adidas-national-high-school-wrestling-individual-rankings-january-2nd-2020/76034
+- https://www.flowrestling.org/rankings/6448067-2019-20-high-school-rankings/35060-pound-for-pound
+
+# 3
+
+Go back to
+https://www.itl.nist.gov/div898/strd/anova/SiRstv.html
+
+Can you write code to read the data linked on this page, then iterate over the linked data sets by following the `Next Dataset` links?
+
+# 4
+
+Iterate over links in
+https://www.win-magazine.com/category/hs-rankings/
+and parse individual pages, i.e.
+https://www.win-magazine.com/2019/12/wins-december-2019-high-school-rankings/
+
+
+# Other packages
+
+```{r,eval=FALSE}
+library(XML)
+ 
+# Read and parse HTML file
+doc.html = htmlTreeParse('http://apiolaza.net/babel.html',
+           useInternal = TRUE)
+ 
+# Extract all the paragraphs (HTML tag is p, starting at
+# the root of the document). Unlist flattens the list to
+# create a character vector.
+doc.text = unlist(xpathApply(doc.html, '//p', xmlValue))
+ 
+# Replace all \n by spaces
+doc.text = gsub('\\n', ' ', doc.text)
+ 
+# Join all the elements of the character vector into a single
+# character string, separated by spaces
+doc.text = paste(doc.text, collapse = ' ')
+```
+
+See
+
+https://stackoverflow.com/questions/38135638/scraping-website-with-r-xml-content-does-not-seem-to-be-xml
+
+Installed RSelenium from source, not through RStudio
+
+
+```{r,eval=FALSE}
+library("RSelenium")
+
+startServer()
+remDr <- remoteDriver$new()
+remDr$open()
+```
+
+```{r}
+path <- 'https://news.theopenmat.com/high-school-wrestling/high-school-wrestling-rankings/final-2015-clinch-gear-national-high-school-wrestling-individual-rankings/57136'
+library(XML)
+ 
+# Read and parse HTML file
+doc.html = htmlTreeParse(path,
+           useInternal = TRUE)
+str(doc.html)
+
+
+doc.html <- htmlTreeParse(path,
+           useInternal = TRUE,isHTML=TRUE)
+#system.file("examples", "index.html", package = "XML")
+doc.html <- htmlTreeParse(readLines(path), asText = TRUE)
+names(doc.html)
+```
+
+Error
+```
+path <- 'http://news.theopenmat.com/high-school-wrestling/high-school-wrestling-rankings/final-2015-clinch-gear-national-high-school-wrestling-individual-rankings/57136'
+doc.html = htmlTreeParse(path,
+           useInternal = TRUE)
+str(doc.html)
+```
+
+```{r}
+library(RCurl)
+xData <- getURL(path)
+doc <- htmlParse(xData)
+str(doc)
+```
+
+```{r}
+doc <- htmlParse(xData,useInternal = FALSE)
+names(doc)
+```
+
+```
+str(doc)
+```
+
+```{r}
+names(doc$children)
+names(doc$children$html)
+class(htmlParse(doc$children$html,useInternal = FALSE))
+# xmlParse(doc$children$html,useInternal = FALSE)
+```
+
+```{r}
+doc.html = htmlTreeParse(path,
+           useInternal = FALSE)
+names(doc.html)
+```
+
+```{r}
+doc.html = htmlParse(path,
+           useInternal = FALSE)
+
+names(doc.html)
+#str(doc.html)
+```
+
+```{r,eval=FALSE}
+doc.html$children
+doc.html$children$html
+```
+
+We want to look for the 
+```
+<table id="tablepress-676" class="tablepress tablepress-id-676">
+```
+tags
+
+```{r,eval=FALSE}
+getNodeSet(doc.html, '//table')
+xpathApply(doc.html, '//table', xmlValue)
+```
+
+```{r,eval=FALSE}
+# Extract all the paragraphs (HTML tag is p, starting at
+# the root of the document). Unlist flattens the list to
+# create a character vector.
+doc.text = unlist(xpathApply(doc.html, '//p', xmlValue))
+ 
+# Replace all \n by spaces
+doc.text = gsub('\\n', ' ', doc.text)
+ 
+# Join all the elements of the character vector into a single
+# character string, separated by spaces
+doc.text = paste(doc.text, collapse = ' ')
+```
+
+https://www.wrestlestat.com/nationaltourneyresult/2018/individual/125
+WrestlStat link
+https://www.wrestlestat.com/nationaltourneyresult/2019/individual/125
+
+```{r}
+path <- 'https://www.wrestlestat.com/nationaltourneyresult/2019/individual/125'
+
+# Read and parse HTML file
+doc.html = htmlTreeParse(path,
+           useInternal = TRUE)
+head(str(doc.html))
+```

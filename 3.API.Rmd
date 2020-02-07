@@ -1,0 +1,164 @@
+---
+title: "Web Scraping"
+author: Peter Claussen
+date: 2/11/2020
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# API
+
+
+## The Problem
+
+One of the wrestlers I've followed over the years is Luke Zilverberg, 157 for SDSU. He place 8th in 2018, but was not particularly highly ranked in high school (at least, that's my understanding). I'd like go back over the various wrestling web sites and try mine past results - perhaps we might build a machine learning system that produce better rankings.
+
+
+# The Open Mat
+
+We'll start with a web site with a very simple API. We simply pass a text query by
+
+```{r}
+query <- 'https://news.theopenmat.com/?s=zilverberg'
+```
+
+This is then loaded as any web page:
+
+```{r}
+library(rvest)
+res.url <- url(query)
+html.file <- read_html(query)
+head(html.file)
+```
+
+We will most likely be intersted in hyperlinks, so
+```{r}
+link.nodes <- html_nodes(html.file, xpath = '//a')
+href.attr <- html_attr(link.nodes,'href')
+head(href.attr)
+```
+
+We will further want to limit our crawling to rankings.
+
+```{r}
+recruiting.links <- href.attr[grepl('rankings', href.attr)]
+recruiting.links
+```
+
+We note a pattern - some links end with a slash - those might not have content, but instead aggregate other pages. We'll further subset for just those pages that end in numbers
+
+```{r}
+recruiting.links <- href.attr[grepl('.*rankings.*/[0-9]+$', href.attr)]
+recruiting.links
+```
+
+Now, let's iterate over each link and see if any contain a `table`
+
+```{r}
+for(link in recruiting.links) {
+  link.file <- read_html(link)
+  link.table <- html_nodes(html.file, xpath = '//table')
+  print(str(link.table))
+}
+```
+
+# FloWrestling
+
+FloWresting has a similar API, but also allows us to specify a category (this will be accessible through a tab in the main page).
+
+```{r}
+query <- 'https://www.flowrestling.org/search?q=zilverberg&type=ranking'
+html.file <- read_html(query)
+link.nodes <- html_nodes(html.file, xpath = '//a')
+head(link.nodes)
+href.attr <- html_attr(link.nodes,'href')
+head(href.attr)
+recruiting.links <- href.attr[grepl('recruiting', href.attr)]
+```
+
+Compare this with the `results` query (I've included some of the other API calls)
+
+```{r}
+query <- 'https://www.flowrestling.org/search?q=zilverberg&page=1&limit=10&sort=recent&type=result'
+html.file <- read_html(query)
+link.nodes <- html_nodes(html.file, xpath = '//a')
+href.attr <- html_attr(link.nodes,'href')
+href.attr
+score.links <- href.attr[grepl('championship', href.attr)]
+head(score.links)
+```
+
+
+```{r}
+for(link in score.links) {
+  link.url <- paste('https://www.flowrestling.org',link,sep="")
+  link.file <- read_html(link.url)
+  link.table <- html_nodes(html.file, xpath = '//table')
+  print(str(link.table))
+}
+```
+
+This example is a bit unfair - the pages returned from Flo don't look like HTML (or anything ML-like, for that matter). There are some sites in the Exercises that have more accessible API, but, unfortunately, Flo is probably more complete.
+
+# Trackwrestling
+
+www.trackwrestling.com also has an extensive data base, but it's API is more cryptic - I'll include it for illustation only.
+
+```{r}
+query <- 'https://www.trackwrestling.com/tw/membership/ViewProfile.jsp?TIM=1580939416681&twSessionId=zvsxsjdwnd&twId=2098662009'
+res.url <- url(query)
+html.file <- read_html(query)
+head(html.file)
+link.nodes <- html_nodes(html.file, xpath = '//a')
+head(link.nodes)
+href.attr <- html_attr(link.nodes,'href')
+href.attr
+```
+
+# Exercises
+
+# 1
+
+Note that in our first example from The Open Mat, some of the links are of the form
+`https://news.theopenmat.com/page/2?s=zilverberg` . Write a script to parse the result from
+https://news.theopenmat.com/?s=zilverberg and iterate over these additional pages in turn.
+
+
+# 2
+
+Iterate over each wrestler in the `ncaa2018.csv` file, and write a script to crawl the web to find wrestling results or rankings (perhaps video?) for each wrestler.
+
+# 3
+
+Visit the web site [Quant Wrestling](https://quantwrestling.com/) and [The Intermat](https://intermatwrestle.com/rankings/college/)
+Can you write code to load rakings for the 149 pound weight class, and to compare those rankings?
+
+https://quantwrestling.com/?weight=125
+https://quantwrestling.com/?page=2&weight=125
+
+
+```{r}
+inter.url <- 'https://intermatwrestle.com/rankings/college/149?'
+quant.url <- 'https://quantwrestling.com/?page=2&weight=125'
+inter.file <- read_html(inter.url)
+inter.table <- html_nodes(inter.file, xpath = '//table')
+inter.table
+inter.dat <- html_table(inter.file)[[1]]
+head(inter.dat)
+```
+
+```{r}
+quant.file <- read_html(quant.url)
+quant.span <- html_nodes(quant.file, xpath = '//span')
+head(quant.span)
+```
+
+```{r}
+quant.nodes <- html_nodes(quant.file, xpath = '//div')
+quant.nodes
+head(quant.nodes)
+html_name(quant.nodes)
+```

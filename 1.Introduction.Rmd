@@ -1,0 +1,154 @@
+---
+title: "Web Scraping"
+author: Peter Claussen
+date: 2/11/2020
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1 A Gentle Introduction
+
+## The Problem
+
+- Visit the NIST Statistical Reference Data Set [](https://www.itl.nist.gov/div898/strd/anova/SiRstv.html)
+- Use the data in [Data File in Two-Column Format](https://www.itl.nist.gov/div898/strd/anova/SiRstv.dat)
+- Reproduce the [image](https://www.itl.nist.gov/div898/strd/anova/SiRstv.gif)
+
+
+## Manual Solution
+
+- Download file to local drive
+- Edit in text editor to remove comments
+- Read using standard data table functions
+
+# R Solution
+
+```{r,fig.width=8,fig.height=7}
+tbl <- read.table('./SiRstv.dat',header=TRUE)
+par(mar=c(5,6,2,2))
+plot(Resistance ~ Instrument, data=tbl, 
+     xlab='Instrument', ylab='Resistivity, ohm*cm',pch=16)
+```
+
+
+# Next Steps
+
+We're a long way from web scraping. We had to download a file from the web to edit it into an appropriate format, deleting documentation. That's acceptable for a small exmaple, more interesting data will be larger and dynamic.
+
+Our next step towards web scraping will be to read files directly from the web. 
+
+
+## Skipping lines
+
+Since we know we deleted 60 lines of text from the original, we can simply skip lines:
+
+```{r,fig.width=8,fig.height=7}
+tbl <- read.table('https://www.itl.nist.gov/div898/strd/anova/SiRstv.dat',skip=60)
+names(tbl) <- c('Instrument','Resistance')
+plot(Resistance ~ Instrument, data=tbl, 
+     xlab='Instrument', ylab='Resistivity, ohm*cm',pch=16)
+```
+
+
+Alternatively,
+
+```{r,fig.width=8,fig.height=7}
+tbl <- read.table('https://www.itl.nist.gov/div898/strd/anova/SiRstv.dat',
+                  header=TRUE,skip=59,fill=TRUE)
+names(tbl) <- c(names(tbl)[2:3],'Blank')
+plot(as.formula(paste(names(tbl)[2],'~',names(tbl)[1])), data=tbl,
+     xlab='Instrument', ylab='Resistivity, ohm*cm',pch=16)
+```
+
+# Learning the structure of a file
+
+This method still requires we know something about the contents of the file. How can we discover contents of the file, without loading the entre file?
+
+## One approach
+
+```{r}
+lines <- readLines('https://www.itl.nist.gov/div898/strd/anova/SiRstv.dat')
+for(i in 1:length(lines)) {
+  if(nchar(lines[i])>0) {
+    current.row <- read.table(text=lines[i])
+    if(all(apply(current.row,2,is.numeric))) {
+      break
+    }
+  }
+}
+i
+```
+
+So,
+
+```{r,fig.width=8,fig.height=7}
+tbl <- read.table('https://www.itl.nist.gov/div898/strd/anova/SiRstv.dat',skip=i-1)
+names(tbl) <- c('Instrument','Resistance')
+par(mar=c(5,6,2,2))
+plot(Resistance ~ Instrument, data=tbl, 
+     xlab='Instrument', ylab='Resistivity, ohm*cm',pch=16)
+```
+...
+
+... or
+
+```{r,fig.width=8,fig.height=7}
+tbl <- read.table(text=paste(lines[(i+1):length(lines)],collapse='\n'))
+names(tbl) <- c('Instrument','Resistance')
+par(mar=c(5,6,2,2))
+plot(Resistance ~ Instrument, data=tbl, 
+     xlab='Instrument', ylab='Resistivity, ohm*cm',pch=16)
+```
+
+
+
+Exercises
+========================================================
+
+# 1
+
+Read a data table from [Data File in Table Format](https://www.itl.nist.gov/div898/strd/anova/SiRstvt.dat)
+
+#2
+
+Repeat with a different data sets from https://www.itl.nist.gov/div898/strd/general/dataarchive.html
+
+
+
+# Python in RStudio
+
+
+(set `eval=TRUE` to run the following chunks)
+
+In order to run `python` from RStudio, you might need to match versions, in the command line
+```
+$ python -V
+$ which python
+```
+
+and then choose specific option if necessary
+
+```{r,eval=FALSE}
+library(reticulate)
+use_python('/opt/anaconda3/bin/python')
+py_config()
+```
+
+Then, python output should be redirected to R Markdown
+
+```{python,eval=FALSE}
+import pandas
+tbl = pandas.read_table('./SiRstv.dat',sep='\s+')
+tbl.plot.scatter(x='Instrument', y='Resistance')
+```
+
+```{python,eval=FALSE}
+import matplotlib.pyplot as plt
+plt.plot(tbl['Instrument'], tbl['Resistance'],'ko')
+plt.ylabel('Resistivity, ohm*cm')
+plt.xlabel('Instrument')
+plt.show()
+```
