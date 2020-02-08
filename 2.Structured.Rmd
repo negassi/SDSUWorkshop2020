@@ -226,7 +226,12 @@ and parse individual pages, i.e.
 https://www.win-magazine.com/2019/12/wins-december-2019-high-school-rankings/
 
 
-# Other packages
+# Bits and Pieces
+
+Some loose ends and false starts; mostly notes to myself as I wrote the main content for these exercises.
+
+
+From https://www.r-bloggers.com/reading-html-pages-in-r-for-text-processing/
 
 ```{r,eval=FALSE}
 library(XML)
@@ -263,7 +268,7 @@ remDr <- remoteDriver$new()
 remDr$open()
 ```
 
-```{r}
+```{r,eval=FALSE}
 path <- 'https://news.theopenmat.com/high-school-wrestling/high-school-wrestling-rankings/final-2015-clinch-gear-national-high-school-wrestling-individual-rankings/57136'
 library(XML)
  
@@ -288,36 +293,33 @@ doc.html = htmlTreeParse(path,
 str(doc.html)
 ```
 
-```{r}
+```{r,eval=FALSE}
 library(RCurl)
 xData <- getURL(path)
 doc <- htmlParse(xData)
 str(doc)
 ```
 
-```{r}
+```{r,eval=FALSE}
 doc <- htmlParse(xData,useInternal = FALSE)
 names(doc)
-```
-
-```
 str(doc)
 ```
 
-```{r}
+```{r,eval=FALSE}
 names(doc$children)
 names(doc$children$html)
 class(htmlParse(doc$children$html,useInternal = FALSE))
 # xmlParse(doc$children$html,useInternal = FALSE)
 ```
 
-```{r}
+```{r,eval=FALSE}
 doc.html = htmlTreeParse(path,
            useInternal = FALSE)
 names(doc.html)
 ```
 
-```{r}
+```{r,eval=FALSE}
 doc.html = htmlParse(path,
            useInternal = FALSE)
 
@@ -341,6 +343,7 @@ getNodeSet(doc.html, '//table')
 xpathApply(doc.html, '//table', xmlValue)
 ```
 
+See https://stackoverflow.com/questions/38803045/reading-list-of-webpages-in-r-and-saving-the-output-in-csv
 ```{r,eval=FALSE}
 # Extract all the paragraphs (HTML tag is p, starting at
 # the root of the document). Unlist flattens the list to
@@ -355,11 +358,9 @@ doc.text = gsub('\\n', ' ', doc.text)
 doc.text = paste(doc.text, collapse = ' ')
 ```
 
-https://www.wrestlestat.com/nationaltourneyresult/2018/individual/125
-WrestlStat link
 https://www.wrestlestat.com/nationaltourneyresult/2019/individual/125
 
-```{r}
+```{r,eval=FALSE}
 path <- 'https://www.wrestlestat.com/nationaltourneyresult/2019/individual/125'
 
 # Read and parse HTML file
